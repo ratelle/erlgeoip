@@ -1,0 +1,8 @@
+{application, erlgeoip, [
+  {description, "Erlang GeoIP NIF"},
+  {vsn, "0.1"},
+  {applications, [
+    kernel,
+    stdlib
+  ]}
+]}.

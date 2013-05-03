@@ -1,0 +1,4 @@
+ebin
+priv/geoip_nif.so
+deps
+*.o
