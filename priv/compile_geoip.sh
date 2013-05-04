@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+export LC_CTYPE=C
 
 cd $REBAR_DEPS_DIR/geoip
 
