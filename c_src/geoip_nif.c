@@ -246,7 +246,7 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	GeoIPRecord_delete(gir);
     enif_free(ip);
 
-    return erl_geoip;
+    return enif_make_tuple2(env, make_atom(env, "ok"), erl_geoip);
 
 }
 
