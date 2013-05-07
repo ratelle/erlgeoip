@@ -133,8 +133,9 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     double longitude = 0.0;
     int area_code = 0;
     int dma_code = 0;
-    const char *organization_name = NULL;
-    const char *isp_name = NULL;
+    char *organization_name = NULL;
+    char *isp_name = NULL;
+    char *netspeed_rev1 = NULL;
     const char *netspeed = NULL;
 
     if (argc != 1) {
@@ -198,7 +199,8 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     }
 
     if (gip_netspeed_edition_rev1 != NULL) {
-	netspeed = GeoIP_name_by_addr_gl(gip_netspeed_edition_rev1, ip, &gl);
+	netspeed_rev1 = GeoIP_name_by_addr_gl(gip_netspeed_edition_rev1, ip, &gl);
+	netspeed = netspeed_rev1;
     }
     else if (gip_netspeed_edition != NULL) {
 	GeoIPNetspeedValues netspeed_id = GeoIP_id_by_addr_gl(gip_netspeed_edition, ip, &gl);
@@ -244,6 +246,12 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	GeoIPRegion_delete(region);
     if (gir != NULL)
 	GeoIPRecord_delete(gir);
+    if (organization_name != NULL)
+	free(organization_name);
+    if (isp_name != NULL)
+	free(isp_name);
+    if (netspeed_rev1 != NULL)
+	free(netspeed_rev1);
     enif_free(ip);
 
     return enif_make_tuple2(env, make_atom(env, "ok"), erl_geoip);
