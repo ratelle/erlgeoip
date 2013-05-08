@@ -2,7 +2,8 @@
 
 -export([
     init/0,
-    lookup/1
+    lookup/1,
+    normalize_city/1
 ]).
 
 -on_load(init/0).
@@ -24,4 +25,7 @@ init() ->
     end.
 
 lookup(_Ip) ->
+    {error, geoip_nif_not_loaded}.
+
+normalize_city(_City) ->
     {error, geoip_nif_not_loaded}.

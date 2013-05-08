@@ -1,6 +1,11 @@
 #include <erl_nif.h>
 #include <GeoIP.h>
 #include <GeoIPCity.h>
+#include <iconv.h>
+#include <string.h>
+#include <sys/types.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #define	IS_KNOWN(str)	(((str) != NULL) && (strcmp((str), "--") != 0) && \
 			 (strcmp((str), "N/A") != 0) &&			\
@@ -20,9 +25,19 @@ static GeoIP *gip_isp_edition = NULL;
 static GeoIP *gip_netspeed_edition = NULL;
 static GeoIP *gip_netspeed_edition_rev1 = NULL;
 
+static iconv_t cd;
+
 static int
 on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
 {
+    //const int one = 1;
+
+    cd = iconv_open("ascii//TRANSLIT//IGNORE", "utf-8");
+    if (cd == (iconv_t) -1)
+	return -1;
+
+    //iconvctl(cd, ICONV_SET_TRANSLITERATE, (void*)&one);
+    //iconvctl(cd, ICONV_SET_DISCARD_ILSEQ, (void*)&one);
 
     if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV1))
 	gip_city_edition = GeoIP_open_type(GEOIP_CITY_EDITION_REV1,
@@ -258,8 +273,66 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 }
 
+static ERL_NIF_TERM
+geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    ErlNifBinary input;
+    ERL_NIF_TERM retval;
+    char *in, *out;
+    char *inptr, *outptr, *c;
+    size_t inlen, outlen;
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!enif_inspect_iolist_as_binary(env, argv[0], &input)) {
+        return enif_make_badarg(env);
+    }
+
+    inlen = input.size;
+    in = (char *) enif_alloc(inlen+1);
+    memcpy(in, input.data, inlen);
+    in[inlen] = '\0';
+
+    outlen = (inlen*3)+1;
+    out = (char *) enif_alloc(outlen);
+
+    inptr = in;
+    outptr = out;
+
+    if (!in || !out) {
+        retval = make_error(env, "out_of_memory");
+    }
+    else if (iconv(cd, &inptr, &inlen, &outptr, &outlen) == (size_t) -1) {
+	retval = make_error(env, "normalization_failed");
+    }
+    else {
+	inptr = in;
+	for(c = out; c <= outptr; c++) {
+	    if (isalpha(*c)) {
+		*inptr = tolower(*c);
+		inptr++;
+	    }
+	}
+	*inptr = 0;
+	retval = make_binary_string(env, in);
+    }
+
+    if (in) {
+	enif_free(in);
+    }
+    if (out) {
+	enif_free(out);
+    }
+
+    return retval;
+}
+
+
 static ErlNifFunc nif_functions[] = {
-    {"lookup", 1, geo_lookup}
+    {"lookup", 1, geo_lookup},
+    {"normalize_city", 1, geo_normalize}
 };
 
 ERL_NIF_INIT(erlgeoip, nif_functions, &on_load, NULL, NULL, NULL);
