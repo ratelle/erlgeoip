@@ -2,10 +2,7 @@
 #include <GeoIP.h>
 #include <GeoIPCity.h>
 #include <iconv.h>
-#include <string.h>
-#include <sys/types.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <ctype.h>
 
 #define	IS_KNOWN(str)	(((str) != NULL) && (strcmp((str), "--") != 0) && \
 			 (strcmp((str), "N/A") != 0) &&			\
