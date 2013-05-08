@@ -22,19 +22,29 @@ static GeoIP *gip_isp_edition = NULL;
 static GeoIP *gip_netspeed_edition = NULL;
 static GeoIP *gip_netspeed_edition_rev1 = NULL;
 
-static iconv_t cd;
+static iconv_t *cds = NULL;
 
 static int
 on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
 {
-    //const int one = 1;
+    int schedulers;
+    int i;
 
-    cd = iconv_open("ascii//TRANSLIT//IGNORE", "utf-8");
-    if (cd == (iconv_t) -1)
+    if(!enif_get_int(env, info, &schedulers) || schedulers < 1)
 	return -1;
 
-    //iconvctl(cd, ICONV_SET_TRANSLITERATE, (void*)&one);
-    //iconvctl(cd, ICONV_SET_DISCARD_ILSEQ, (void*)&one);
+    cds = (iconv_t*) enif_alloc(schedulers * sizeof(iconv_t));
+
+    for (i = 0; i < schedulers; i++) {
+	cds[i] = iconv_open("ascii//TRANSLIT//IGNORE", "utf-8");
+	if (cds[i] == (iconv_t) -1) {
+	    int j;
+	    for(j = 0; j < i; j++)
+		iconv_close(cds[j]);
+	    enif_free(cds);
+	    return -1;
+	}
+    }
 
     if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV1))
 	gip_city_edition = GeoIP_open_type(GEOIP_CITY_EDITION_REV1,
@@ -67,7 +77,6 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
 	gip_netspeed_edition = GeoIP_open_type(GEOIP_NETSPEED_EDITION,
 					       GEOIP_MODE);
 
-    int i;
     GeoIP *gis[] = {
 	gip_country_edition,
 	gip_region_edition,
@@ -275,17 +284,19 @@ geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary input;
     ERL_NIF_TERM retval;
+    int scheduler_id;
     char *in, *out;
     char *inptr, *outptr, *c;
     size_t inlen, outlen;
 
-    if (argc != 1) {
+    if (argc != 2)
         return enif_make_badarg(env);
-    }
 
-    if (!enif_inspect_iolist_as_binary(env, argv[0], &input)) {
+    if (!enif_inspect_iolist_as_binary(env, argv[0], &input))
         return enif_make_badarg(env);
-    }
+
+    if (!enif_get_int(env, argv[1], &scheduler_id) || scheduler_id < 1)
+	return enif_make_badarg(env);
 
     inlen = input.size;
     in = (char *) enif_alloc(inlen+1);
@@ -301,7 +312,7 @@ geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!in || !out) {
         retval = make_error(env, "out_of_memory");
     }
-    else if (iconv(cd, &inptr, &inlen, &outptr, &outlen) == (size_t) -1) {
+      else if (iconv(cds[scheduler_id], &inptr, &inlen, &outptr, &outlen) == (size_t) -1) {
 	retval = make_error(env, "normalization_failed");
     }
     else {
@@ -326,10 +337,9 @@ geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return retval;
 }
 
-
 static ErlNifFunc nif_functions[] = {
     {"lookup", 1, geo_lookup},
-    {"normalize_city", 1, geo_normalize}
+    {"normalize_city_int", 2, geo_normalize}
 };
 
 ERL_NIF_INIT(erlgeoip, nif_functions, &on_load, NULL, NULL, NULL);
