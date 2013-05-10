@@ -306,7 +306,7 @@ normalize_city_int(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     memcpy(in, input.data, input.size);
     in[input.size] = '\0';
 
-    out = geo_normalize(in,cds[scheduler_id]);
+    out = geo_normalize(in,cds[scheduler_id-1]);
 
     if (out == NULL)
 	retval = make_error(env, "normalization_failed");
