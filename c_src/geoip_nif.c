@@ -36,7 +36,7 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     cds = (iconv_t*) enif_alloc(schedulers * sizeof(iconv_t));
 
     for (i = 0; i < schedulers; i++) {
-	cds[i] = iconv_open("ascii//TRANSLIT//IGNORE", "utf-8");
+	cds[i] = iconv_open("ISO-8859-1//IGNORE", "UTF-8");
 	if (cds[i] == (iconv_t) -1) {
 	    int j;
 	    for(j = 0; j < i; j++)
@@ -279,15 +279,15 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 }
 
+char *geo_normalize(char *string, iconv_t cd);
+
 static ERL_NIF_TERM
-geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+normalize_city_int(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary input;
     ERL_NIF_TERM retval;
     int scheduler_id;
     char *in, *out;
-    char *inptr, *outptr, *c;
-    size_t inlen, outlen;
 
     if (argc != 2)
         return enif_make_badarg(env);
@@ -298,48 +298,32 @@ geo_normalize(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     if (!enif_get_int(env, argv[1], &scheduler_id) || scheduler_id < 1)
 	return enif_make_badarg(env);
 
-    inlen = input.size;
-    in = (char *) enif_alloc(inlen+1);
-    memcpy(in, input.data, inlen);
-    in[inlen] = '\0';
+    in = (char *) enif_alloc(input.size+1);
 
-    outlen = (inlen*3)+1;
-    out = (char *) enif_alloc(outlen);
+    if (in == NULL)
+	return make_error(env, "out_of_memory");
 
-    inptr = in;
-    outptr = out;
+    memcpy(in, input.data, input.size);
+    in[input.size] = '\0';
 
-    if (!in || !out) {
-        retval = make_error(env, "out_of_memory");
-    }
-      else if (iconv(cds[scheduler_id], &inptr, &inlen, &outptr, &outlen) == (size_t) -1) {
+    out = geo_normalize(in,cds[scheduler_id]);
+
+    if (out == NULL)
 	retval = make_error(env, "normalization_failed");
-    }
-    else {
-	inptr = in;
-	for(c = out; c <= outptr; c++) {
-	    if (isalpha(*c)) {
-		*inptr = tolower(*c);
-		inptr++;
-	    }
-	}
-	*inptr = 0;
-	retval = make_binary_string(env, in);
-    }
+    else
+	retval = make_binary_string(env, out);
 
-    if (in) {
+    if (in)
 	enif_free(in);
-    }
-    if (out) {
-	enif_free(out);
-    }
+    if (out)
+	free(out);
 
     return retval;
 }
 
 static ErlNifFunc nif_functions[] = {
     {"lookup", 1, geo_lookup},
-    {"normalize_city_int", 2, geo_normalize}
+    {"normalize_city_int", 2, normalize_city_int}
 };
 
 ERL_NIF_INIT(erlgeoip, nif_functions, &on_load, NULL, NULL, NULL);
