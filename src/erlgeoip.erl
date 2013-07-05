@@ -18,7 +18,7 @@ init() ->
                   Dir -> Dir
               end,
     SoName = filename:join(PrivDir, "geoip_nif"),
-    case catch erlang:load_nif(SoName, erlang:system_info(schedulers)) of
+    case catch erlang:load_nif(SoName,[]) of
         ok -> ok;
         LoadError -> error_logger:error_msg("erlgeoip: error loading NIF (~p): ~p",
                                             [SoName, LoadError])
@@ -27,9 +27,5 @@ init() ->
 lookup(_Ip) ->
     {error, geoip_nif_not_loaded}.
 
-normalize_city(City) ->
-    SchedulerId = erlang:system_info(scheduler_id),
-    normalize_city_int(City,SchedulerId).
-
-normalize_city_int(_City,_SchedulerId) ->
+normalize_city(_City) ->
     {error, geoip_nif_not_loaded}.

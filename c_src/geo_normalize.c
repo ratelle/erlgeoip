@@ -69,7 +69,7 @@ geo_normalize(char *in, iconv_t cd)
 	if (local_cd != NULL)
 		iconv_close(local_cd);
 
-	if (conv == (size_t) -1 && errno == E2BIG) {
+	if (conv == (size_t) -1) {
 		// Failed
 		free(out);
 		return NULL;

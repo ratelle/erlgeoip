@@ -22,29 +22,13 @@ static GeoIP *gip_isp_edition = NULL;
 static GeoIP *gip_netspeed_edition = NULL;
 static GeoIP *gip_netspeed_edition_rev1 = NULL;
 
-static iconv_t *cds = NULL;
+static ErlNifTSDKey iconv_key;
 
 static int
 on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
 {
-    int schedulers;
-    int i;
-
-    if(!enif_get_int(env, info, &schedulers) || schedulers < 1)
+    if (enif_tsd_key_create("iconv_key", &iconv_key) != 0)
 	return -1;
-
-    cds = (iconv_t*) enif_alloc(schedulers * sizeof(iconv_t));
-
-    for (i = 0; i < schedulers; i++) {
-	cds[i] = iconv_open("ISO-8859-1//IGNORE", "UTF-8");
-	if (cds[i] == (iconv_t) -1) {
-	    int j;
-	    for(j = 0; j < i; j++)
-		iconv_close(cds[j]);
-	    enif_free(cds);
-	    return -1;
-	}
-    }
 
     if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV1))
 	gip_city_edition = GeoIP_open_type(GEOIP_CITY_EDITION_REV1,
@@ -76,6 +60,8 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     else if (GeoIP_db_avail(GEOIP_NETSPEED_EDITION))
 	gip_netspeed_edition = GeoIP_open_type(GEOIP_NETSPEED_EDITION,
 					       GEOIP_MODE);
+
+    int i;
 
     GeoIP *gis[] = {
 	gip_country_edition,
@@ -282,40 +268,41 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 char *geo_normalize(char *string, iconv_t cd);
 
 static ERL_NIF_TERM
-normalize_city_int(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+normalize_city(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary input;
     ERL_NIF_TERM retval;
-    int scheduler_id;
     char *in, *out;
+    iconv_t iconv;
 
-    if (argc != 2)
+    if (argc != 1)
         return enif_make_badarg(env);
 
     if (!enif_inspect_iolist_as_binary(env, argv[0], &input))
         return enif_make_badarg(env);
 
-    if (!enif_get_int(env, argv[1], &scheduler_id) || scheduler_id < 1)
-	return enif_make_badarg(env);
+    if ((iconv = (iconv_t) enif_tsd_get(iconv_key)) == NULL) {
+	if ((iconv = iconv_open("ISO-8859-1//IGNORE", "UTF-8")) == (iconv_t) -1)
+	    return make_error(env, "iconv_open_failed");
+	enif_tsd_set(iconv_key, (void*) iconv);
+    }
 
-    in = (char *) enif_alloc(input.size+1);
-
-    if (in == NULL)
+    if ((in = enif_alloc(input.size+1)) == NULL)
 	return make_error(env, "out_of_memory");
 
     memcpy(in, input.data, input.size);
     in[input.size] = '\0';
 
-    out = geo_normalize(in,cds[scheduler_id-1]);
+    out = geo_normalize(in,iconv);
 
     if (out == NULL)
 	retval = make_error(env, "normalization_failed");
     else
 	retval = make_binary_string(env, out);
 
-    if (in)
+    if (in != NULL)
 	enif_free(in);
-    if (out)
+    if (out != NULL)
 	free(out);
 
     return retval;
@@ -323,7 +310,7 @@ normalize_city_int(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 static ErlNifFunc nif_functions[] = {
     {"lookup", 1, geo_lookup},
-    {"normalize_city_int", 2, normalize_city_int}
+    {"normalize_city", 1, normalize_city}
 };
 
 ERL_NIF_INIT(erlgeoip, nif_functions, &on_load, NULL, NULL, NULL);
