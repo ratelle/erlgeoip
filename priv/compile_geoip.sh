@@ -10,7 +10,9 @@ if [ ! -f configure ]; then
 fi
 
 if [ ! -f config.status ]; then
-    ./configure --prefix=/usr
+%%    The prefix doesn't work in mavericks. Removing for now
+%%    ./configure --prefix=/usr
+    ./configure
 fi
 
 make
