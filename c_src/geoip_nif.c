@@ -378,7 +378,7 @@ geo_lookup_v6(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	organization_name = GeoIP_name_by_addr_v6_gl(gip_org_edition_v6, ip, &gl);
     }
 
-    if (gip_isp_edition != NULL) {
+    if (gip_isp_edition_v6 != NULL) {
 	isp_name = GeoIP_name_by_addr_v6_gl(gip_isp_edition_v6, ip, &gl);
     }
 
