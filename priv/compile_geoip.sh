@@ -9,8 +9,13 @@ if [ ! -f configure ]; then
     ./bootstrap
 fi
 
+
+# Geoip will expect the databases in /usr/local/share/GeoIP/
+# Theorically with   ./configure --prefix=/path/to/database
+# the database path is changed to /path/to/database/share/GeoIP/
+
 if [ ! -f config.status ]; then
-    ./configure --prefix=/usr
+    ./configure
 fi
 
 make
