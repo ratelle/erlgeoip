@@ -1,10 +1,13 @@
 REBAR=./rebar
 
-all: deps compile
+all: deps compile xref
 
 deps:
 	@$(REBAR) update-deps
 	@$(REBAR) get-deps
+
+xref:
+	@$(REBAR) skip_deps=true xref
 
 compile:
 	$(REBAR) compile
