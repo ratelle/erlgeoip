@@ -22,6 +22,12 @@ static GeoIP *gip_isp_edition = NULL;
 static GeoIP *gip_netspeed_edition = NULL;
 static GeoIP *gip_netspeed_edition_rev1 = NULL;
 
+static GeoIP *gip_country_edition_v6 = NULL;
+static GeoIP *gip_city_edition_v6 = NULL;
+static GeoIP *gip_org_edition_v6 = NULL;
+static GeoIP *gip_isp_edition_v6 = NULL;
+static GeoIP *gip_netspeed_edition_rev1_v6 = NULL;
+
 static ErlNifTSDKey iconv_key;
 
 static int
@@ -30,6 +36,33 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     if (enif_tsd_key_create("iconv_key", &iconv_key) != 0)
 	return -1;
 
+    // Databases for ipv6
+    // I dont see matches for:
+    //  - gip_region_edition_v6
+    //  - gip_netspeed_edition_v6
+    if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV1_V6))
+    	gip_city_edition_v6 = GeoIP_open_type(GEOIP_CITY_EDITION_REV1_V6,
+    						GEOIP_MODE);
+        else if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV0_V6))
+    	gip_city_edition_v6 = GeoIP_open_type(GEOIP_CITY_EDITION_REV0_V6,
+    					   GEOIP_MODE);
+        else if (GeoIP_db_avail(GEOIP_COUNTRY_EDITION_V6))
+    	gip_country_edition_v6 = GeoIP_open_type(GEOIP_COUNTRY_EDITION_V6,
+    					      GEOIP_MODE);
+
+    if (GeoIP_db_avail(GEOIP_ORG_EDITION_V6))
+    	gip_org_edition_v6 = GeoIP_open_type(GEOIP_ORG_EDITION_V6,
+    					  GEOIP_MODE);
+
+        if (GeoIP_db_avail(GEOIP_ISP_EDITION_V6))
+    	gip_isp_edition_v6 = GeoIP_open_type(GEOIP_ISP_EDITION_V6,
+    					  GEOIP_MODE);
+
+        if (GeoIP_db_avail(GEOIP_NETSPEED_EDITION_REV1_V6))
+    	gip_netspeed_edition_rev1_v6 = GeoIP_open_type(GEOIP_NETSPEED_EDITION_REV1_V6,
+    						    GEOIP_MODE);
+
+    // Databases for ipv4
     if (GeoIP_db_avail(GEOIP_CITY_EDITION_REV1))
 	gip_city_edition = GeoIP_open_type(GEOIP_CITY_EDITION_REV1,
 						GEOIP_MODE);
@@ -45,6 +78,7 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     else if (GeoIP_db_avail(GEOIP_COUNTRY_EDITION))
 	gip_country_edition = GeoIP_open_type(GEOIP_COUNTRY_EDITION,
 					      GEOIP_MODE);
+
 
     if (GeoIP_db_avail(GEOIP_ORG_EDITION))
 	gip_org_edition = GeoIP_open_type(GEOIP_ORG_EDITION,
@@ -70,7 +104,12 @@ on_load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
 	gip_org_edition,
 	gip_isp_edition,
 	gip_netspeed_edition,
-	gip_netspeed_edition_rev1
+	gip_netspeed_edition_rev1,
+    gip_country_edition_v6,
+    gip_city_edition_v6,
+    gip_org_edition_v6,
+    gip_isp_edition_v6,
+    gip_netspeed_edition_rev1_v6
     };
 
     for (i = 0; i < sizeof(gis)/sizeof(GeoIP*); i++) {
@@ -265,6 +304,142 @@ geo_lookup(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 }
 
+static ERL_NIF_TERM
+geo_lookup_v6(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    ErlNifBinary input;
+    char *ip;
+    GeoIPLookup gl;
+
+    const char *country_code = NULL;
+    const char *country_code3 = NULL;
+    const char *country_name = NULL;
+    GeoIPRegion *region = NULL;
+    const char *region_name = NULL;
+    GeoIPRecord *gir = NULL;
+    const char *city_name = NULL;
+    const char *postal_code = NULL;
+    double latitude = 0.0;
+    double longitude = 0.0;
+    int area_code = 0;
+    int dma_code = 0;
+    char *organization_name = NULL;
+    char *isp_name = NULL;
+    char *netspeed_rev1 = NULL;
+    const char *netspeed = NULL;
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+    if (!enif_inspect_iolist_as_binary(env, argv[0], &input)) {
+        return enif_make_badarg(env);
+    }
+
+    ip = (char *) enif_alloc(input.size+1);
+
+    if (!ip) {
+        return make_error(env, "out_of_memory");
+    }
+    memcpy(ip, input.data, input.size);
+    ip[input.size] = '\0';
+
+    if (gip_city_edition_v6 != NULL) {
+	gir = GeoIP_record_by_addr_v6(gip_city_edition_v6, ip);
+	if (gir != NULL) {
+	    country_code = gir->country_code;
+	    country_code3 = gir->country_code3;
+	    country_name = gir->country_name;
+	    region_name = gir->region;
+	    city_name = gir->city;
+	    postal_code = gir->postal_code;
+	    latitude = gir->latitude;
+	    longitude = gir->longitude;
+	    area_code = gir->area_code;
+	    dma_code = gir->dma_code;
+	}
+    }
+    /* Fallback when city editions are not available */
+    else {
+	int country_id = 0;
+	GeoIP *current_gi = NULL;
+	if (gip_country_edition_v6 != NULL) {
+	    country_id = GeoIP_id_by_addr_v6_gl(gip_country_edition_v6, ip, &gl);
+	    current_gi = gip_country_edition_v6;
+	}
+
+	if (country_id > 0) {
+	    country_code = GeoIP_code_by_id(country_id);
+	    country_code3 = GeoIP_code3_by_id(country_id);
+	    country_name = GeoIP_country_name_by_id(current_gi, country_id);
+	}
+    }
+
+    if (gip_org_edition_v6 != NULL) {
+	organization_name = GeoIP_name_by_addr_v6_gl(gip_org_edition_v6, ip, &gl);
+    }
+
+    if (gip_isp_edition_v6 != NULL) {
+	isp_name = GeoIP_name_by_addr_v6_gl(gip_isp_edition_v6, ip, &gl);
+    }
+
+    if (gip_netspeed_edition_rev1_v6 != NULL) {
+	netspeed_rev1 = GeoIP_name_by_addr_v6_gl(gip_netspeed_edition_rev1_v6, ip, &gl);
+	netspeed = netspeed_rev1;
+    }
+
+    ERL_NIF_TERM erl_geoip;
+    ERL_NIF_TERM erl_geoip_header = make_atom(env, "geoip");
+    ERL_NIF_TERM erl_country_code = make_geoip_binary_string(env, country_code);
+    ERL_NIF_TERM erl_country_code3 = make_geoip_binary_string(env, country_code3);
+    ERL_NIF_TERM erl_country_name = make_geoip_binary_string(env, country_name);
+    ERL_NIF_TERM erl_region_name = make_geoip_binary_string(env, region_name);
+    ERL_NIF_TERM erl_city_name = make_geoip_binary_string(env, city_name);
+    ERL_NIF_TERM erl_postal_code = make_geoip_binary_string(env, postal_code);
+    ERL_NIF_TERM erl_latitude = enif_make_double(env, latitude);
+    ERL_NIF_TERM erl_longitude = enif_make_double(env, longitude);
+    ERL_NIF_TERM erl_area_code = enif_make_int(env, area_code);
+    ERL_NIF_TERM erl_dma_code = enif_make_int(env, dma_code);
+    ERL_NIF_TERM erl_organization_name = make_geoip_binary_string(env, organization_name);
+    ERL_NIF_TERM erl_isp_name = make_geoip_binary_string(env, isp_name);
+    ERL_NIF_TERM erl_netspeed = make_geoip_binary_string(env, netspeed);
+
+    const ERL_NIF_TERM terms[] = {
+	erl_geoip_header,
+	erl_country_code,
+	erl_country_code3,
+	erl_country_name,
+	erl_region_name,
+	erl_city_name,
+	erl_postal_code,
+	erl_latitude,
+	erl_longitude,
+	erl_area_code,
+	erl_dma_code,
+	erl_organization_name,
+	erl_isp_name,
+	erl_netspeed
+    };
+
+    erl_geoip = enif_make_tuple_from_array (env, terms, sizeof(terms)/sizeof(ERL_NIF_TERM));
+
+    if (region != NULL)
+	GeoIPRegion_delete(region);
+    if (gir != NULL)
+	GeoIPRecord_delete(gir);
+    if (organization_name != NULL)
+	free(organization_name);
+    if (isp_name != NULL)
+	free(isp_name);
+    if (netspeed_rev1 != NULL)
+	free(netspeed_rev1);
+    enif_free(ip);
+
+    return enif_make_tuple2(env, make_atom(env, "ok"), erl_geoip);
+
+}
+
+
+
 char *geo_normalize(char *string, iconv_t cd);
 
 static ERL_NIF_TERM
@@ -310,6 +485,7 @@ normalize_city(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 static ErlNifFunc nif_functions[] = {
     {"lookup", 1, geo_lookup},
+    {"lookup_v6", 1, geo_lookup_v6},
     {"normalize_city", 1, normalize_city}
 };
 
